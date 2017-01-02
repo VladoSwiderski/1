@@ -1,7 +1,247 @@
-*.ss~
-*.ss#*
-.#*.ss
+; --------------------------------------------------------------------------------------------------------------
+; The office
+; --------------------------------------------------------------------------------------------------------------
 
-*.scm~
-*.scm#*
-.#*.scm
+; A post office consists of
+; - an inbox for incomming packages
+; - an outbox for outgoing packages
+; - a floor of fixed size to work on. Each slot contains either a package or nothing
+; - a worker who can carry a single package (or nothing)
+; - a list of instructions, telling the worker what to do step by step
+; - an instruction pointer, telling the worker what to do next. It is either an absolute
+;   position on the instructions board, starting from 0, or #f for "finish work!"
+; - a time clock which records the total time of work (in number of performed instructions)
+(define-record-procedures office
+  make-office
+  office?
+  (inbox
+   outbox
+   floor-slots
+   worker
+   instruction-list
+   ip
+   time-clock))
+
+(: make-office ((list-of package)
+                (list-of package)
+                (list-of (maybe-of package))
+                (maybe-of package)
+                (list-of (mixed instruction string))
+                (maybe-of natural)
+                natural
+                -> office))
+(: office? (any -> boolean))
+(: inbox (office -> (list-of package)))
+(: outbox (office -> (list-of package)))
+(: floor-slots (office -> (list-of (maybe-of package))))
+(: worker (office -> (maybe-of package)))
+(: instruction-list (office -> (list-of (mixed instruction string))))
+(: ip (office -> (maybe-of natural)))
+(: time-clock (office -> natural))
+
+; A package contains eigther a number or a character
+(define package (signature (mixed integer character)))
+
+; A character is an upper case letter of the alphabet between "A" and "Z" 
+(define character (signature (predicate (lambda (c) (and (string? c) (string<=? "A" c "Z"))))))
+
+; A (maybe-of ⟨t⟩) is either an element of signature ⟨t⟩ or empty (#f)
+(: maybe-of (signature -> signature))
+(define maybe-of
+  (lambda (t)
+    (signature (mixed t (one-of #f)))))
+
+
+; --------------------------------------------------------------------------------------------------------------
+; Some predefined list functions
+; --------------------------------------------------------------------------------------------------------------
+
+; replicate an element n times
+(: replicate (natural %a -> (list-of %a)))
+(define replicate
+  (lambda (n x)
+    (cond ((= n 0) empty)
+          (else (make-pair x (replicate (- n 1) x))))))
+
+; Zip two lists with a given function
+(: zipWith ((%a %b -> %c) (list-of %a) (list-of %b) -> (list-of %c)))
+(define zipWith
+  (lambda (f xs ys)
+    (cond ((empty? xs) empty)
+          ((empty? ys) empty)
+          (else        (make-pair (f (first xs) (first ys)) 
+                                  (zipWith f (rest xs) (rest ys)))))))
+
+; Return an integer list range
+(: range (integer integer -> (list-of integer)))
+(define range
+  (lambda (from to)
+    (cond ((> from to) empty)
+          (else (make-pair from (range (+ from 1) to))))))
+
+; TODO: Teileaufgaben (f) und (k) - Higher-Order Listen Prozeduren implementieren
+
+
+; --------------------------------------------------------------------------------------------------------------
+; Instructions
+; --------------------------------------------------------------------------------------------------------------
+
+; An instruction consists of
+; - a text representation and
+; - a function that modifies a given office, following the instruction
+(define-record-procedures instruction
+  make-instr
+  instr?
+  (description action))
+
+(: make-instr (string (office -> office) -> instruction))
+(: instr? (any -> boolean))
+(: description (instruction -> string))
+(: action (instruction -> (office -> office)))
+
+
+; TODO: Teilaufgaben (a), (b), (g), (i), (k), (l) und (n) - Die einzelenen Instruktionen hier implementieren
+(define <-inbox
+  (lambda (i)
+    ((discription i) (cond ((empty? (inbox (action i))) (make-office (inbox (action i))
+                                                                     (outbox (action i))
+                                                                     (floor-slots (action i))
+                                                                     (worker (action i))
+                                                                     (instruction-list (action i))
+                                                                     #f
+                                                                     (time-clock(action i))))
+                           (else (make-office (letztesElemLöschen (inbox (action i)))
+                                              (outbox (action i))
+                                              (floor-slots (action i))
+                                              (inbox (action i))
+                                              (instruction-list (action i))
+                                              (ip (action i))
+                                              (time-clock(action i))))))))
+; --------------------------------------------------------------------------------------------------------------
+; Running the office
+; --------------------------------------------------------------------------------------------------------------
+
+; Perform the action of the next instruction
+(: perform-next (office -> office))
+(define perform-next
+  (lambda (o)
+    o ; TODO: Teilaufgabe (c) - Funktionalität der Prozedur implementieren
+    ))
+
+; Iteratively apply instructions to a given office
+(: perform-all (office -> office))
+(define perform-all
+  (lambda (o)
+    o ; TODO: Teilaufgabe (d) - Funktionalität der Prozedur implementieren
+    ))
+
+
+; --------------------------------------------------------------------------------------------------------------
+; Draw and animate the office
+; --------------------------------------------------------------------------------------------------------------
+
+; Draw package
+(: draw-package ((maybe-of package) -> image))
+(define draw-package
+  (lambda (p)
+    (place-image (text (cond ((number? p) (number->string p))
+                             ((string? p) p)
+                             (else ""))
+                       14 "black")
+                 12 12
+                 (overlay
+                  (cond ((boolean? p) empty-image)
+                        (else (rectangle 20 20 "solid" "lightgray")))
+                  (rectangle 23 23 "solid" "brown")
+                  (rectangle 24 24 "solid" "white")))))
+
+; Draw list of packages
+(: draw-pkgs (string (list-of (maybe-of package)) -> image))
+(define draw-pkgs
+  (lambda (lbl ps)
+    (beside (place-image/align (text lbl 14 "black") (* 2.5 24) 12 "right" "center" (rectangle (* 2.5 24) 24 "solid" "white"))
+            (empty-scene 3 0)
+            (fold empty-image beside (map draw-package ps)))))
+
+; Draw instruction based on instruction pointer and a given line number
+(: draw-instruction ((maybe-of natural) -> (natural (mixed instruction string) -> image)))
+(define draw-instruction
+  (lambda (ip)
+    (lambda (n instr)
+      (let ((current? (and (number? ip) (= ip n))))
+        (text/font (string-append
+                    (if current? ">" " ")
+                    (if (< n 10) "0" "")
+                    (number->string n) ": "
+                    (cond ((string? instr)
+                           (string-append "\"" instr "\""))
+                          (else (description instr))))
+                   16 "black" #f "modern" "normal"
+                   (if current? "bold" "normal")
+                   #f)))))
+
+; Draw list of instructions
+(: draw-instructions ((list-of (mixed instruction string)) (maybe-of natural) -> image))
+(define draw-instructions
+  (lambda (is ip)
+    (above/align "left"
+                 (text "Board of instructions: (press any key to proceed, ESC to finish work)"  14 "black")
+                 (empty-scene 0 6)
+                 (beside (empty-scene 12 0)
+                         (fold empty-image
+                               (lambda (instr res)
+                                   (above/align "left" instr res))
+                               (zipWith (draw-instruction ip)
+                                        (range 0 (- (length is) 1))
+                                        is)))            
+                 (empty-scene 0 6))))
+
+; Draw the office
+(: draw-office (office -> image))
+(define draw-office
+  (lambda (o)
+    (above/align "left"
+                 (text "Human Resource Machine Post Office" 30 "gray")
+                 (empty-scene 0 6)
+                 (draw-instructions (instruction-list o) (ip o))
+                 (empty-scene 0 6)
+                 (draw-pkgs "inbox <-" (inbox o))
+                 (empty-scene 0 6)
+                 (beside (draw-pkgs "worker" (list (worker o)))
+                         (draw-pkgs "floor" (floor-slots o)))
+                 (empty-scene 0 6)
+                 (draw-pkgs "outbox ->" (outbox o))
+                 (empty-scene 0 6)
+                 (text (string-append "Time clock: " (number->string (time-clock o))) 14 "black")
+                 )))
+
+; Animate the office
+(: start-office-day (office -> office))
+(define start-office-day
+  (lambda (o)
+    (big-bang o
+              (to-draw draw-office)
+              (on-key (lambda (o key)
+                        (cond ((key=? key "escape") (perform-all o))
+                              (else (perform-next o))))))))
+
+
+; --------------------------------------------------------------------------------------------------------------
+; Programs and tests
+; --------------------------------------------------------------------------------------------------------------
+
+; ; Solution day 1
+; (define day01
+;   (make-office (list "E" 3) empty    ; inbox, outbox
+;                (replicate 16 #f) #f  ; floor, worker
+;                (list <-inbox         ; instructions:
+;                      ->outbox
+;                      <-inbox
+;                      ->outbox)            
+;                0 0))                 ; ip, time
+; 
+; (check-expect (outbox (perform-all day01)) (list 3 "E"))
+
+
+; TODO: Teilaufgaben (h), (j), (m) und (o) - Programme schreiben und testen
+
